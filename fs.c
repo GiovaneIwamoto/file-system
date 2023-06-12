@@ -10,57 +10,68 @@
 #define ERROR_MSG(m)
 #endif
 
-void fs_init( void) {
+void fs_init(void)
+{
     block_init();
     /* More code HERE */
 }
 
-int fs_mkfs( void) {
+int fs_mkfs(void)
+{
     return -1;
 }
 
-int fs_open( char *fileName, int flags) {
+int fs_open(char *fileName, int flags)
+{
     return -1;
 }
 
-int fs_close( int fd) {
+int fs_close(int fd)
+{
     return -1;
 }
 
-int fs_read( int fd, char *buf, int count) {
-    return -1;
-}
-    
-int fs_write( int fd, char *buf, int count) {
+int fs_read(int fd, char *buf, int count)
+{
     return -1;
 }
 
-int fs_lseek( int fd, int offset) {
+int fs_write(int fd, char *buf, int count)
+{
     return -1;
 }
 
-int fs_mkdir( char *fileName) {
+int fs_lseek(int fd, int offset)
+{
     return -1;
 }
 
-int fs_rmdir( char *fileName) {
+int fs_mkdir(char *fileName)
+{
     return -1;
 }
 
-int fs_cd( char *dirName) {
+int fs_rmdir(char *fileName)
+{
     return -1;
 }
 
-int 
-fs_link( char *old_fileName, char *new_fileName) {
+int fs_cd(char *dirName)
+{
     return -1;
 }
 
-int fs_unlink( char *fileName) {
+int fs_link(char *old_fileName, char *new_fileName)
+{
     return -1;
 }
 
-int fs_stat( char *fileName, fileStat *buf) {
+int fs_unlink(char *fileName)
+{
     return -1;
 }
 
+int fs_stat(char *fileName, fileStat *buf)
+{
+    return -1;
+}
