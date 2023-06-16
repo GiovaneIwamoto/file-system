@@ -3,9 +3,6 @@
 #include "block.h"
 #include "fs.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-
 #ifdef FAKE
 #include <stdio.h>
 #define ERROR_MSG(m) printf m;
@@ -13,45 +10,81 @@
 #define ERROR_MSG(m)
 #endif
 
-char *buffer;
+// ---------- VAR DEF ----------
+// Super Block Structure / Copy
+static char super_block_copy[NEW_BLOCK_SIZE];
+static super_block_structure *created_super_block = (super_block_structure *)super_block_copy;
+
+// Pwd
+static uint16_t pwd;
+
+// File Descriptor
+static file_desc_structure file_desc_table[MAX_FILE_OPEN];
+
+// Bitmap
+static char inode_bitmap_block_copy[NEW_BLOCK_SIZE];
+static char dblock_bitmap_block_copy[NEW_BLOCK_SIZE];
+
+// ---------- AUX FUNCTIONS ----------
+
+// Read multiple blocks of data from fs.
+static void adapt_block_read(int block, char *mem)
+{
+    int i;
+    for (i = 0; i < NEW_BLOCK_SIZE / BLOCK_SIZE; i++)
+    {
+        block_read(block * 8 + i, mem + i * BLOCK_SIZE); // Uses block_read
+    }
+}
+
+static void adapt_block_write(int block, char *mem)
+{
+    int i;
+    for (i = 0; i < NEW_BLOCK_SIZE / BLOCK_SIZE; i++)
+    {
+        block_write(block * 8 + i, mem + i * BLOCK_SIZE);
+    }
+}
+
+// ---------- COMMANDS ----------
 
 void fs_init(void)
 {
-    int magic_number = 0;
+    block_init();
 
-    block_init(); // Block Init
+    // Pointer to copy based on SB structre
+    created_super_block = (super_block_structure *)super_block_copy;
 
-    buffer_alloc();
-    block_read(SUPER_BLOCK, buffer); // Read Super Block
+    adapt_block_read(SUPER_BLOCK, super_block_copy);
 
-    magic_number = byte_to_int(buffer, BLOCK_SIZE - 4);
-
-    if (magic_number != MAGIC_NUMBER)
+    // Verify magic number
+    if (created_super_block->magic_num != MAGIC_NUMBER)
     {
-        printf("Unformatted disk\n");
-        printf("Formatting...\n");
-        fs_mkfs();
+        // Try backup
+        adapt_block_read(SUPER_BLOCK_BACKUP, super_block_copy);
+        if (created_super_block->magic_num != MAGIC_NUMBER)
+        {
+            fs_mkfs();
+            return;
+        }
+        else
+            adapt_block_write(SUPER_BLOCK, super_block_copy);
     }
-    else
-    {
-        printf("Disk is already formatted\n");
-    }
+
+    // Root directory stored at pwd var
+    pwd = (uint16_t)PWD_ID_ROOT_DIR;
+
+    // Bzero to clear file descriptor table
+    bzero((char *)file_desc_table, sizeof(file_desc_table));
+
+    // TODO: BITMAPS
+    //  Load bitmaps
+    adapt_block_read(created_super_block->inode_bitmap_place, inode_bitmap_block_copy);
+    adapt_block_read(created_super_block->dblock_bitmap_place, dblock_bitmap_block_copy);
 }
 
 int fs_mkfs(void)
 {
-    int volume_size = FS_SIZE; // 2048
-
-    // Data Blocks = Volume - SuperBlock - BlockAllocationMap - Inodes
-    int data_blocks = (volume_size - INODES - 2);
-
-    block_read(SUPER_BLOCK, buffer);
-
-    // TODO:
-
-    block_write(SUPER_BLOCK, buffer);
-
-    return 0;
 }
 
 int fs_open(char *fileName, int flags)
@@ -107,28 +140,4 @@ int fs_unlink(char *fileName)
 int fs_stat(char *fileName, fileStat *buf)
 {
     return -1;
-}
-
-int byte_to_int(char *buffer, int position)
-{
-    int i, integer = 0, bits_offset = 24;
-    for (i = 0; i < 4; i++)
-    {
-        integer |= buffer[position + i] << bits_offset;
-        bits_offset -= 8;
-    }
-    return integer;
-}
-
-void buffer_alloc(void)
-{
-    if (!buffer)
-    {
-        buffer = (char *)malloc(BLOCK_SIZE * sizeof(char));
-        if (!buffer)
-        {
-            printf("Error allocating buffer\n");
-            exit(EXIT_FAILURE);
-        }
-    }
 }

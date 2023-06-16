@@ -7,7 +7,6 @@
 #define BLOCK_SIZE_BITS 9
 #define BLOCK_SIZE (1 << BLOCK_SIZE_BITS) // 512 bytes
 #define BLOCK_MASK (BLOCK_SIZE - 1)
-#define SUPER_BLOCK 0
 
 void bzero_block(char *block);
 void block_init(void);
