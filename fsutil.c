@@ -96,51 +96,6 @@ static int dblock_alloc(void)
     return -1;
 }
 
-static int alloc_dblock_mount_to_inode(int inode_id)
-{
-    int alloc_res;
-    inode temp;
-    inode_read(inode_id, &temp);
-    int next_block = (temp.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE; // start from 0 , mean the next in-inode blocks id
-    if (next_block > MAX_BLOCKS_INDEX_IN_INODE)
-    {
-        ERROR_MSG(("beyond one inode can handle!\n"))
-        return -1;
-    }
-    if (next_block >= DIRECT_BLOCK) // need indirect block
-    {
-        if (next_block == DIRECT_BLOCK) // need indirect block ,but the indirect index block has not been alloced
-        {
-            alloc_res = dblock_alloc();
-            if (alloc_res < 0)
-                return -1;
-            temp.blocks[DIRECT_BLOCK] = alloc_res;
-        }
-        dblock_read(temp.blocks[DIRECT_BLOCK], block_copy);
-        uint16_t *block_list = (uint16_t *)block_copy;
-
-        alloc_res = dblock_alloc();
-        if (alloc_res < 0)
-        {
-            if (next_block == DIRECT_BLOCK)
-                dblock_free(temp.blocks[DIRECT_BLOCK]);
-            return -1;
-        }
-        block_list[next_block - DIRECT_BLOCK] = alloc_res;
-        dblock_write(temp.blocks[DIRECT_BLOCK], block_copy);
-    }
-    else
-    {
-        alloc_res = dblock_alloc();
-        if (alloc_res < 0)
-            return -1;
-        temp.blocks[next_block] = alloc_res;
-    }
-    // ERROR_MSG(("inode %d need a block in-inode id %d, alloc_res %d\n",inode_id,next_block,alloc_res))
-    inode_write(inode_id, &temp);
-    return alloc_res;
-}
-
 static int dir_entry_add(int dir_index, int son_index, char *filename)
 {
     // Read father inode
@@ -201,4 +156,49 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     dir_inode.size += sizeof(dir_entry);
     inode_write(dir_index, &dir_inode); // update dir inode
     return 0;
+}
+
+static int alloc_dblock_mount_to_inode(int inode_id)
+{
+    int alloc_res;
+    inode temp;
+    inode_read(inode_id, &temp);
+    int next_block = (temp.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE; // start from 0 , mean the next in-inode blocks id
+    if (next_block > MAX_BLOCKS_INDEX_IN_INODE)
+    {
+        ERROR_MSG(("beyond one inode can handle!\n"))
+        return -1;
+    }
+    if (next_block >= DIRECT_BLOCK) // need indirect block
+    {
+        if (next_block == DIRECT_BLOCK) // need indirect block ,but the indirect index block has not been alloced
+        {
+            alloc_res = dblock_alloc();
+            if (alloc_res < 0)
+                return -1;
+            temp.blocks[DIRECT_BLOCK] = alloc_res;
+        }
+        dblock_read(temp.blocks[DIRECT_BLOCK], block_copy);
+        uint16_t *block_list = (uint16_t *)block_copy;
+
+        alloc_res = dblock_alloc();
+        if (alloc_res < 0)
+        {
+            if (next_block == DIRECT_BLOCK)
+                dblock_free(temp.blocks[DIRECT_BLOCK]);
+            return -1;
+        }
+        block_list[next_block - DIRECT_BLOCK] = alloc_res;
+        dblock_write(temp.blocks[DIRECT_BLOCK], block_copy);
+    }
+    else
+    {
+        alloc_res = dblock_alloc();
+        if (alloc_res < 0)
+            return -1;
+        temp.blocks[next_block] = alloc_res;
+    }
+    // ERROR_MSG(("inode %d need a block in-inode id %d, alloc_res %d\n",inode_id,next_block,alloc_res))
+    inode_write(inode_id, &temp);
+    return alloc_res;
 }
