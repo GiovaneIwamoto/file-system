@@ -54,3 +54,21 @@ void bzero_block(char *block)
 	for (i = 0; i < BLOCK_SIZE; i++)
 		block[i] = 0;
 }
+
+// Clear the content of 8 consecutive blocks in the file, using a temporary buffer block_buffer
+void bzero_block_custom(int block)
+{
+	char block_buffer[BLOCK_SIZE];
+	bzero_block(block_buffer);
+
+	int ret;
+	int i;
+	for (i = 0; i < 8; i++)
+	{
+		ret = fseek(fd, (block * 8 + i) * BLOCK_SIZE, SEEK_SET);
+		assert(ret == 0);
+
+		ret = fwrite(block_buffer, 1, BLOCK_SIZE, fd);
+		assert(ret == BLOCK_SIZE);
+	}
+}

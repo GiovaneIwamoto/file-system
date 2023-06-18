@@ -27,6 +27,11 @@ int fs_stat(char *fileName, fileStat *buf);
 #define NEW_BLOCK_SIZE 4096
 #define MAX_FILE_COUNT (2048)
 
+// Bitmap , Dir
+#define INODE_BITMAP 0
+#define DBLOCK_BITMAP 1
+#define MY_DIRECTORY 0
+
 // ------------------------------ SUPER BLOCK ------------------------------
 
 #define SUPER_BLOCK 1 // Super Block number
@@ -62,9 +67,24 @@ typedef struct __attribute__((__packed__))
 } super_block_structure;
 
 // ---------- INODE ------------------------------
+// TODO: Change
+#define DIRECT_BLOCK 11
+#define INODE_PADDING 0
+// total size: 32 bytes
 
 #define INODE_PER_BLOCK (NEW_BLOCK_SIZE / 32)
+// 128
 
+#define MAX_BLOCKS_INDEX_IN_INODE (DIRECT_BLOCK + NEW_BLOCK_SIZE / 2)
+// 11+2048=2059
+
+typedef struct __attribute__((__packed__))
+{
+    uint32_t size; // in bytes
+    uint16_t type; // 0 for dir, 1 for file
+    uint16_t link_count;
+    uint16_t blocks[DIRECT_BLOCK + 1]; // start from 0 as data block index
+} inode;
 // ---------- FILE DESCRIPTOR ------------------------------
 
 typedef struct
