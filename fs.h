@@ -100,6 +100,18 @@ typedef struct
 
 #define PWD_ID_ROOT_DIR 0
 
+#define DIR_ENTRY_PADDING (64 - 2 - MAX_FILE_NAME - 1)
+// dir entry total size: 64 bytes
+#define DIR_ENTRY_PER_BLOCK (NEW_BLOCK_SIZE / 64)
+// 64
+
+typedef struct __attribute__((__packed__))
+{
+    uint16_t inode_id;
+    char file_name[MAX_FILE_NAME + 1];
+    char _padding[DIR_ENTRY_PADDING];
+} dir_entry;
+
 // ------------------------------------------------------------
 
 #endif
