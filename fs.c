@@ -577,3 +577,32 @@ int fs_stat(char *fileName, fileStat *buf)
 {
     return -1;
 }
+
+void fs_ls()
+{
+    inode dir_inode;
+    dir_entry dir_entries[NEW_BLOCK_SIZE / sizeof(dir_entry)];
+
+    inode_read(pwd, &dir_inode);
+
+    int i, j;
+
+    printf(".\n");
+    printf("..\n");
+
+    for (i = 0; i < DIRECT_BLOCK; i++)
+    {
+        if (dir_inode.blocks[i] != 0)
+        {
+            dblock_read(dir_inode.blocks[i], (char *)dir_entries);
+
+            for (j = 0; j < NEW_BLOCK_SIZE / sizeof(dir_entry); j++)
+            {
+                if (dir_entries[j].inode_id != 0)
+                {
+                    printf("%s\n", dir_entries[j].file_name);
+                }
+            }
+        }
+    }
+}

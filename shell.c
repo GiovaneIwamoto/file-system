@@ -282,7 +282,8 @@ static void shell_cd(void)
 static void shell_ls(void)
 {
 	// should a system call print to the screen?
-	writeStr("Problem with ls\n");
+	if (fs_ls() == -1)
+		writeStr("Problem with ls\n");
 
 	// Code/pseudocode you can use somewhere to get the same ls output as the tests
 	//   writeStr("Name");
