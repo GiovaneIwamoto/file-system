@@ -10,7 +10,7 @@
 #define ERROR_MSG(m)
 #endif
 
-// ---------- VAR DEF ----------
+// ==================== VAR DEF ====================
 
 static char block_copy[NEW_BLOCK_SIZE];
 
@@ -136,7 +136,8 @@ static void dblock_free(int index)
     write_bitmap_block(DBLOCK_BITMAP, index, 0);
 }
 
-// =================================
+// ==================== FIND NEXT FREE ====================
+
 static int find_next_free(int i_d) // must alloc(write 1) after this function find the result
 {
     int i;
@@ -176,7 +177,7 @@ static int find_next_free(int i_d) // must alloc(write 1) after this function fi
     return -1;
 }
 
-// ==================== INODE INIT READ WRITE ====================
+// ==================== INODE INIT READ ALLOC WRITE FREE ====================
 
 // Initializing an inode structure
 static void inode_init(inode *p, int type) // 0 for dir , 1 for file
@@ -267,7 +268,8 @@ static void inode_free(int index) // free the inode, also free its data
     }
 }
 
-// ==================================================
+// ==================== DATA BLOCK ALLOCATION ====================
+
 static int dblock_alloc(void)
 {
     int search_res = -1;
@@ -284,7 +286,8 @@ static int dblock_alloc(void)
     return -1;
 }
 
-//================================================================================
+// ==================== ALLOC DATA BLOCK MOUNT TO INODE ====================
+
 static int alloc_dblock_mount_to_inode(int inode_id)
 {
     int alloc_res;
@@ -330,8 +333,8 @@ static int alloc_dblock_mount_to_inode(int inode_id)
     return alloc_res;
 }
 
-// ================================================================================
-// DIR ENTRY ADD
+// ==================== DIRECTORY ENTRY ADD ====================
+
 static int dir_entry_add(int dir_index, int son_index, char *filename)
 {
     // Read father inode
@@ -394,10 +397,10 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     return 0;
 }
 
-// ---------- COMMANDS ----------
-// ---------- COMMANDS ----------
-// ---------- COMMANDS ----------
-// ---------- COMMANDS ----------
+// ======================================== COMMANDS ========================================
+// ======================================== COMMANDS ========================================
+// ======================================== COMMANDS ========================================
+// ======================================== COMMANDS ========================================
 
 void fs_init(void)
 {
@@ -578,7 +581,7 @@ int fs_stat(char *fileName, fileStat *buf)
     return -1;
 }
 
-void fs_ls()
+int fs_ls()
 {
     inode dir_inode;
     dir_entry dir_entries[NEW_BLOCK_SIZE / sizeof(dir_entry)];
@@ -605,4 +608,5 @@ void fs_ls()
             }
         }
     }
+    return 0;
 }
