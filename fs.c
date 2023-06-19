@@ -13,6 +13,7 @@
 // ==================== VAR DEF ====================
 
 static char block_copy[NEW_BLOCK_SIZE];
+static char block_copy_copy[NEW_BLOCK_SIZE];
 
 // Super Block Structure / Copy
 static char super_block_copy[NEW_BLOCK_SIZE];
@@ -397,6 +398,170 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     return 0;
 }
 
+static int dir_entry_find(int dir_index, char *filename)
+{
+    inode dir_inode;
+    inode_read(dir_index, &dir_inode);
+    int total_entry_num = dir_inode.size / (sizeof(dir_entry));
+    int total_block_num = (total_entry_num - 1 + DIR_ENTRY_PER_BLOCK) / DIR_ENTRY_PER_BLOCK;
+    if (total_entry_num == 0)
+        return -1;
+
+    if (total_block_num > DIRECT_BLOCK)
+    {
+        int i, j;
+
+        dblock_read(dir_inode.blocks[DIRECT_BLOCK], block_copy);
+        uint16_t *block_list = (uint16_t *)block_copy;
+
+        for (i = 0; i < total_block_num - DIRECT_BLOCK - 1; i++)
+        {
+            dblock_read(block_list[i], block_copy_copy);
+            dir_entry *entry_list = (dir_entry *)block_copy_copy;
+            for (j = 0; j < DIR_ENTRY_PER_BLOCK; j++)
+                if (same_string(entry_list[j].file_name, filename))
+                    return entry_list[j].inode_id;
+        }
+        // last block
+        dblock_read(block_list[total_block_num - DIRECT_BLOCK - 1], block_copy_copy);
+        int final_end = (total_entry_num - 1) % DIR_ENTRY_PER_BLOCK;
+        dir_entry *entry_list = (dir_entry *)block_copy_copy;
+        for (j = 0; j <= final_end; j++)
+        {
+            if (same_string(entry_list[j].file_name, filename))
+                return entry_list[j].inode_id;
+        }
+
+        // trick to find in direct blocks
+        total_block_num = DIRECT_BLOCK;
+        total_entry_num = DIRECT_BLOCK * DIR_ENTRY_PER_BLOCK;
+    }
+    // direct blocks
+    int i, j, entry_block;
+    for (i = 0; i < total_block_num - 1; i++)
+    {
+        entry_block = dir_inode.blocks[i];
+        dblock_read(entry_block, block_copy);
+        dir_entry *entry_list = (dir_entry *)block_copy;
+        for (j = 0; j < DIR_ENTRY_PER_BLOCK; j++)
+            if (same_string(entry_list[j].file_name, filename))
+                return entry_list[j].inode_id;
+    }
+    // last block
+    int final_end = (total_entry_num - 1) % DIR_ENTRY_PER_BLOCK;
+    entry_block = dir_inode.blocks[total_block_num - 1];
+    dblock_read(entry_block, block_copy);
+    dir_entry *entry_list = (dir_entry *)block_copy;
+    for (j = 0; j <= final_end; j++)
+    {
+        if (same_string(entry_list[j].file_name, filename))
+            return entry_list[j].inode_id;
+    }
+
+    return -1;
+}
+
+// ==================== PATH RESOLVE ====================
+
+static int rel_path_dir_resolve(char *file_path, int temp_pwd) // this just resolve relative path and find inode
+{
+    int path_len = strlen(file_path);
+    if (path_len <= 0)
+    {
+        return temp_pwd;
+    }
+    int i;
+    for (i = 0; i < path_len; i++)
+        if (file_path[i] == '/')
+        {
+            file_path[i] = '\0';
+            break;
+        }
+    int res = dir_entry_find(temp_pwd, file_path);
+    if (res < 0)
+    {
+        // ERROR_MSG(("%s doesn't exist!\n",file_path))
+        return -1;
+    }
+    if (i == path_len) // we reach the last item
+        return res;
+    inode temp;
+    inode_read(res, &temp);
+    if (temp.type != MY_DIRECTORY)
+    {
+        ERROR_MSG(("%s is a data file not a path!\n", file_path))
+        return -1;
+    }
+    return rel_path_dir_resolve(file_path + i + 1, res);
+}
+
+static int path_resolve(char *file_path, int temp_pwd, int mode)
+{
+    if (file_path == NULL)
+    {
+        ERROR_MSG(("No path input!\n"))
+        return -1;
+    }
+    int path_len = strlen(file_path);
+    if (path_len > MAX_PATH_NAME)
+    {
+        ERROR_MSG(("too long path!\n"))
+        return -1;
+    }
+    if (path_len == 0)
+    {
+        ERROR_MSG(("no path input!\n"))
+        return -1;
+    }
+
+    // copy the path
+    char path_buffer[MAX_PATH_NAME + 1];
+    bcopy((unsigned char *)file_path, (unsigned char *)path_buffer, path_len);
+    path_buffer[path_len] = '\0';
+    file_path = path_buffer;
+
+    if (file_path[0] == '/') // absolute path
+    {
+        // trick to change str and temp_pwd
+        temp_pwd = PWD_ID_ROOT_DIR;
+        file_path++;
+        path_len--;
+    }
+
+    if (mode == 2) // to find the last dir
+    {
+        int i;
+        for (i = path_len - 1; i >= 0; i--) // cut the last term
+            if (file_path[i] == '/')
+            {
+                file_path[i + 1] = '\0';
+                break;
+            }
+        // find dir
+        if (i == -1)
+            return temp_pwd;
+        else if (i == 0)
+            return PWD_ID_ROOT_DIR;
+        else
+            return path_resolve(file_path, temp_pwd, MY_DIRECTORY);
+    }
+
+    // real file or last dir mode need to check last char
+    if (mode != MY_DIRECTORY)
+    {
+        if (path_len == 0 || file_path[path_len - 1] == '/') // root or end up with /
+        {
+            ERROR_MSG(("try to find a file but input a path!\n"))
+            return -1;
+        }
+    }
+    else if (file_path[path_len - 1] == '/') // dir allow input: cd abc/ or cd abc
+        file_path[path_len - 1] = '\0';
+
+    // now we have a prepared relative path
+    return rel_path_dir_resolve(file_path, temp_pwd);
+}
+
 // ======================================== COMMANDS ========================================
 // ======================================== COMMANDS ========================================
 // ======================================== COMMANDS ========================================
@@ -563,7 +728,18 @@ int fs_rmdir(char *fileName)
 
 int fs_cd(char *dirName)
 {
-    return -1;
+    int path_res = path_resolve(dirName, pwd, MY_DIRECTORY);
+    if (path_res < 0)
+        return -1;
+    inode temp_inode;
+    inode_read(path_res, &temp_inode);
+    if (temp_inode.type != MY_DIRECTORY)
+    {
+        ERROR_MSG(("%s is not a dir\n", dirName));
+        return -1;
+    }
+    pwd = path_res;
+    return 0;
 }
 
 int fs_link(char *old_fileName, char *new_fileName)
@@ -590,8 +766,8 @@ int fs_ls()
 
     int i, j;
 
-    printf(".\n");
-    printf("..\n");
+    // printf(".\n");
+    // printf("..\n");
 
     for (i = 0; i < DIRECT_BLOCK; i++)
     {
