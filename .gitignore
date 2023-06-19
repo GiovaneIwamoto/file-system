@@ -5,3 +5,4 @@ lnxsh
 shellFake.o
 shellutilFake.o
 utilFake.o
+.vscode

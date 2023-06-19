@@ -20,17 +20,27 @@ int fs_unlink(char *fileName);
 int fs_stat(char *fileName, fileStat *buf);
 
 #define MAX_FILE_NAME 32
+#define MAX_PATH_NAME 256
 
-#define MAX_PATH_NAME 256 // This is the maximum supported "full" path len, eg: /foo/bar/test.txt, rather than the maximum individual filename len.
 #define MAX_FILE_OPEN 256
 
 #define NEW_BLOCK_SIZE 4096
 #define MAX_FILE_COUNT (2048)
 
+#if (NEW_BLOCK_SIZE * DIRECT_BLOCK + NEW_BLOCK_SIZE * NEW_BLOCK_SIZE / 2) < (DATA_BLOCK_NUMBER * NEW_BLOCK_SIZE)
+#define MAX_FILE_SIZE (NEW_BLOCK_SIZE * DIRECT_BLOCK + NEW_BLOCK_SIZE * NEW_BLOCK_SIZE / 2)
+#else
+#define MAX_FILE_SIZE (DATA_BLOCK_NUMBER * NEW_BLOCK_SIZE)
+#endif
+
+#define MAX_FILE_ONE_DIR (DIR_ENTRY_PER_BLOCK * DIRECT_BLOCK + DIR_ENTRY_PER_BLOCK * NEW_BLOCK_SIZE / 2)
+
 // Bitmap , Dir
 #define INODE_BITMAP 0
 #define DBLOCK_BITMAP 1
+
 #define MY_DIRECTORY 0
+#define REAL_FILE 1
 
 // ------------------------------ SUPER BLOCK ------------------------------
 
@@ -67,16 +77,13 @@ typedef struct __attribute__((__packed__))
 } super_block_structure;
 
 // ---------- INODE ------------------------------
-// TODO: Change
+
 #define DIRECT_BLOCK 11
 #define INODE_PADDING 0
-// total size: 32 bytes
 
 #define INODE_PER_BLOCK (NEW_BLOCK_SIZE / 32)
-// 128
 
 #define MAX_BLOCKS_INDEX_IN_INODE (DIRECT_BLOCK + NEW_BLOCK_SIZE / 2)
-// 11+2048=2059
 
 typedef struct __attribute__((__packed__))
 {
@@ -85,6 +92,22 @@ typedef struct __attribute__((__packed__))
     uint16_t link_count;
     uint16_t blocks[DIRECT_BLOCK + 1]; // start from 0 as data block index
 } inode;
+
+// ---------- DIRECTORY ENTRY ------------------------------
+
+#define PWD_ID_ROOT_DIR 0
+
+#define DIR_ENTRY_PADDING (64 - 2 - MAX_FILE_NAME - 1)
+#define DIR_ENTRY_PER_BLOCK (NEW_BLOCK_SIZE / 64)
+
+typedef struct __attribute__((__packed__))
+{
+    uint16_t inode_id;
+    char file_name[MAX_FILE_NAME + 1];
+    char _padding[DIR_ENTRY_PADDING];
+
+} dir_entry;
+
 // ---------- FILE DESCRIPTOR ------------------------------
 
 typedef struct
@@ -95,22 +118,6 @@ typedef struct
     uint16_t mode;
 
 } file_desc_structure;
-
-// ---------- DIRECTORY ------------------------------
-
-#define PWD_ID_ROOT_DIR 0
-
-#define DIR_ENTRY_PADDING (64 - 2 - MAX_FILE_NAME - 1)
-// dir entry total size: 64 bytes
-#define DIR_ENTRY_PER_BLOCK (NEW_BLOCK_SIZE / 64)
-// 64
-
-typedef struct __attribute__((__packed__))
-{
-    uint16_t inode_id;
-    char file_name[MAX_FILE_NAME + 1];
-    char _padding[DIR_ENTRY_PADDING];
-} dir_entry;
 
 // ------------------------------------------------------------
 
