@@ -39,7 +39,7 @@ int fs_stat(char *fileName, fileStat *buf);
 #define INODE_BITMAP 0
 #define DBLOCK_BITMAP 1
 
-#define MY_DIRECTORY 0
+#define POS_DIRECTORY 0
 #define REAL_FILE 1
 
 // ------------------------------ SUPER BLOCK ------------------------------

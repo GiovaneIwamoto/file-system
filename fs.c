@@ -102,7 +102,7 @@ int fs_mkfs(void)
     dblock_bitmap_last = 0;
 
     inode temp_root;
-    inode_init(&temp_root, MY_DIRECTORY);
+    inode_init(&temp_root, POS_DIRECTORY);
     inode_write(PWD_ID_ROOT_DIR, &temp_root);
     write_bitmap_block(INODE_BITMAP, PWD_ID_ROOT_DIR, 1);
 
@@ -136,7 +136,7 @@ int fs_mkfs(void)
 
 int fs_open(char *fileName, int flags)
 {
-    int resolved_path = path_resolve(fileName, pwd, MY_DIRECTORY);
+    int resolved_path = path_resolve(fileName, pwd, POS_DIRECTORY);
 
     // Flag validation
     if (flags != FS_O_RDONLY && flags != FS_O_WRONLY && flags != FS_O_RDWR)
@@ -169,7 +169,7 @@ int fs_open(char *fileName, int flags)
     {
         inode temporary;
         inode_read(resolved_path, &temporary); // Read inode info
-        if (flags != FS_O_RDONLY && temporary.type == MY_DIRECTORY)
+        if (flags != FS_O_RDONLY && temporary.type == POS_DIRECTORY)
         {
             ERROR_MSG(("%s is a dir.\n", fileName))
             fd_close(new_fd); // Close return error
@@ -267,14 +267,6 @@ int fs_read(int fd, char *buf, int count)
     return byte_read;
 }
 
-// TODO:
-// TODO:
-// TODO:
-// TODO:
-// TODO:
-// TODO:
-// TODO:
-// TODO:
 // ==================== WRITE ====================
 
 // writes count bytes to the file referenced by the file descriptor fd of buffer indicated by buf
@@ -376,7 +368,7 @@ int fs_mkdir(char *fileName)
     }
 
     // New inode for current directory
-    int created_inode = inode_create(MY_DIRECTORY);
+    int created_inode = inode_create(POS_DIRECTORY);
     if (created_inode < 0)
         return -1;
 
@@ -410,14 +402,14 @@ int fs_rmdir(char *fileName)
 int fs_cd(char *dirName)
 {
     // Verify dir path based on pwd
-    int determined_path = path_resolve(dirName, pwd, MY_DIRECTORY);
+    int determined_path = path_resolve(dirName, pwd, POS_DIRECTORY);
     if (determined_path < 0)
         return -1;
 
     inode l_inode;
     inode_read(determined_path, &l_inode);
 
-    if (l_inode.type != MY_DIRECTORY) // Not dir case
+    if (l_inode.type != POS_DIRECTORY) // Not dir case
     {
         ERROR_MSG(("%s is not a dir\n", dirName));
         return -1;
@@ -457,13 +449,13 @@ int fs_ls()
     // printf(".\n");
     // printf("..\n");
 
-    for (i = 0; i < DIRECT_BLOCK; i++)
+    for (i = 0; i < DIRECT_BLOCK; i++) // Loop for blocks
     {
         if (dir_inode.blocks[i] != 0)
         {
-            dblock_read(dir_inode.blocks[i], (char *)dir_entries);
+            dblock_read(dir_inode.blocks[i], (char *)dir_entries); // Read
 
-            for (j = 0; j < NEW_BLOCK_SIZE / sizeof(dir_entry); j++)
+            for (j = 0; j < NEW_BLOCK_SIZE / sizeof(dir_entry); j++) // Dir entries
             {
                 if (dir_entries[j].inode_id != 0)
                 {

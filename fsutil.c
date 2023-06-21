@@ -483,7 +483,7 @@ static int rel_path_dir_resolve(char *file_path, int temp_pwd) // this just reso
         return res;
     inode temp;
     inode_read(res, &temp);
-    if (temp.type != MY_DIRECTORY)
+    if (temp.type != POS_DIRECTORY)
     {
         ERROR_MSG(("%s is a data file not a path!\n", file_path))
         return -1;
@@ -539,11 +539,11 @@ static int path_resolve(char *file_path, int temp_pwd, int mode)
         else if (i == 0)
             return PWD_ID_ROOT_DIR;
         else
-            return path_resolve(file_path, temp_pwd, MY_DIRECTORY);
+            return path_resolve(file_path, temp_pwd, POS_DIRECTORY);
     }
 
     // real file or last dir mode need to check last char
-    if (mode != MY_DIRECTORY)
+    if (mode != POS_DIRECTORY)
     {
         if (path_len == 0 || file_path[path_len - 1] == '/') // root or end up with /
         {
