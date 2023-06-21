@@ -172,7 +172,7 @@ int fs_open(char *fileName, int flags)
         if (flags != FS_O_RDONLY && temporary.type == MY_DIRECTORY)
         {
             ERROR_MSG(("%s is a dir.\n", fileName))
-            fd_close(new_fd);
+            fd_close(new_fd); // Close return error
             return -1;
         }
         file_desc_table[new_fd].inode_id = resolved_path; // Store at descriptor table
@@ -184,24 +184,27 @@ int fs_open(char *fileName, int flags)
 
 int fs_close(int fd)
 {
-    if (fd < 0 || fd >= MAX_FILE_OPEN)
-    {
-        ERROR_MSG(("Wrong fd input!\n"))
-        return -1;
-    }
+    // Check file descriptor usage
     if (file_desc_table[fd].is_using == FALSE)
     {
-        ERROR_MSG(("fd %d is not using!", fd))
+        ERROR_MSG(("%d this file descriptor is not in use.", fd))
+        return -1;
+    }
+
+    if (fd < 0 || fd >= MAX_FILE_OPEN)
+    {
+        ERROR_MSG(("Wrong input for file descriptor.\n"))
         return -1;
     }
     fd_close(fd);
 
-    // check whether we need to delete the file
+    // Opened file descriptors that shares same inode id
     if (fd_find_same_num(file_desc_table[fd].inode_id) == 0)
     {
         inode temp;
+        // Read inode infos
         inode_read(file_desc_table[fd].inode_id, &temp);
-        if (temp.link_count == 0) // need to free the file
+        if (temp.link_count == 0)
             inode_free(file_desc_table[fd].inode_id);
     }
     return fd;
@@ -211,71 +214,60 @@ int fs_close(int fd)
 
 int fs_read(int fd, char *buf, int count)
 {
-    if (count < 0)
-    {
-        ERROR_MSG(("Wrong count input!\n"))
-        return -1;
-    }
-    if (fd < 0 || fd >= MAX_FILE_OPEN)
-    {
-        ERROR_MSG(("Wrong fd input!\n"))
-        return -1;
-    }
-    if (file_desc_table[fd].is_using == FALSE)
-    {
-        ERROR_MSG(("fd %d is not using!", fd))
-        return -1;
-    }
-    if (file_desc_table[fd].mode == FS_O_WRONLY)
-    {
-        ERROR_MSG(("can't read the file open as write-only file"))
-        return -1;
-    }
+    // Nothing to read bytes case
     if (count == 0)
     {
         return 0;
     }
-    inode temp_file;
-    inode_read(file_desc_table[fd].inode_id, &temp_file);
 
-    int real_count = 0;
-    if (file_desc_table[fd].cursor >= temp_file.size)
+    // Temporary file with defined inode structure
+    inode temporary_file;
+    inode_read(file_desc_table[fd].inode_id, &temporary_file);
+
+    int byte_read = 0;
+    if (file_desc_table[fd].cursor >= temporary_file.size)
         return 0;
-    if (file_desc_table[fd].cursor + count > temp_file.size)
-        count = temp_file.size - file_desc_table[fd].cursor;
 
-    int end_block = (file_desc_table[fd].cursor + count - 1) / NEW_BLOCK_SIZE;
-    int in_end_block_cursor = (file_desc_table[fd].cursor + count - 1) % NEW_BLOCK_SIZE;
+    // Reading limiter
+    if (file_desc_table[fd].cursor + count > temporary_file.size)
+        count = temporary_file.size - file_desc_table[fd].cursor;
 
-    while (real_count < count)
+    int final_block = (file_desc_table[fd].cursor + count - 1) / NEW_BLOCK_SIZE;
+    int cursor_4_final_block = (file_desc_table[fd].cursor + count - 1) % NEW_BLOCK_SIZE;
+
+    while (byte_read < count) // Read blocks as necessary to fill buffer
     {
-        int now_block = file_desc_table[fd].cursor / NEW_BLOCK_SIZE;
-        int now_block_id;
-        if (now_block >= DIRECT_BLOCK)
+        int block_live = file_desc_table[fd].cursor / NEW_BLOCK_SIZE;
+        int block_live_id;
+        if (block_live >= DIRECT_BLOCK) // Direct or Id index block
         {
-            dblock_read(temp_file.blocks[DIRECT_BLOCK], block_copy);
+            dblock_read(temporary_file.blocks[DIRECT_BLOCK], block_copy);
+
             uint16_t *block_list = (uint16_t *)block_copy;
-            now_block_id = block_list[now_block - DIRECT_BLOCK];
+            block_live_id = block_list[block_live - DIRECT_BLOCK];
         }
         else
         {
-            now_block_id = temp_file.blocks[now_block];
+            block_live_id = temporary_file.blocks[block_live];
         }
-        dblock_read(now_block_id, block_copy);
+        dblock_read(block_live_id, block_copy);
 
-        int rdy_count;
-        if (now_block < end_block)
+        int rdy_count; // Copying bytes block to buff
+
+        if (block_live < final_block)
             rdy_count = NEW_BLOCK_SIZE - file_desc_table[fd].cursor % NEW_BLOCK_SIZE;
         else
-            rdy_count = in_end_block_cursor - file_desc_table[fd].cursor % NEW_BLOCK_SIZE + 1;
+            rdy_count = cursor_4_final_block - file_desc_table[fd].cursor % NEW_BLOCK_SIZE + 1;
+
         bcopy((unsigned char *)(block_copy + file_desc_table[fd].cursor % NEW_BLOCK_SIZE), (unsigned char *)buf, rdy_count);
         buf += rdy_count;
-        real_count += rdy_count;
+        byte_read += rdy_count;
         file_desc_table[fd].cursor += rdy_count;
     }
-    return real_count;
+    return byte_read;
 }
 
+// TODO:
 // ==================== WRITE ====================
 
 int fs_write(int fd, char *buf, int count)
