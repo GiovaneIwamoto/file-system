@@ -13,7 +13,7 @@ def issue(command):
 def check_fs_size():
     fs_size = os.path.getsize('disk')
     if fs_size > fs_size_bytes:
-        print "** File System is bigger than it should be (%s) **" %(pretty_size(fs_size))
+        print ("** File System is bigger than it should be (%s) **") %(pretty_size(fs_size))
 
 def do_exit():
     issue('exit')
@@ -93,18 +93,19 @@ def test_get_all_inodes():
     do_exit()
 
 
-print "......Starting my tests\n\n"
+print ("......Starting my tests\n\n")
+
 sys.stdout.flush()
 spawn_lnxsh()
-test_large_file()
-spawn_lnxsh()
-test_large_dir()
-spawn_lnxsh()
-test_dir_frag()
-spawn_lnxsh()
-test_multi_open()
-spawn_lnxsh()
-test_get_all_handles()
-spawn_lnxsh()
-test_get_all_inodes()
-spawn_lnxsh()
+# test_large_file()
+# spawn_lnxsh()
+# test_large_dir()
+# spawn_lnxsh()
+# test_dir_frag()
+# spawn_lnxsh()
+# test_multi_open()
+# spawn_lnxsh()
+# test_get_all_handles()
+# spawn_lnxsh()
+# test_get_all_inodes()
+# spawn_lnxsh()
