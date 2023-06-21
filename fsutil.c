@@ -276,55 +276,56 @@ static int dblock_alloc(void)
     return -1;
 }
 
-// ==================== ALLOC DATA BLOCK MOUNT TO INODE ====================
-// TODO:
-static int alloc_dblock_mount_to_inode(int inode_id)
+// ==================== ALLOC MOUNT DATABLOCK TO INODE ====================
+
+static int alloc_mount_db(int inode_id)
 {
     int alloc_res;
-    inode temp;
-    inode_read(inode_id, &temp);
-    int next_block = (temp.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE;
-    if (next_block > MAX_BLOCKS_INDEX_IN_INODE)
-    {
-        return -1;
-    }
-    if (next_block >= DIRECT_BLOCK)
+    inode temporary;
+
+    inode_read(inode_id, &temporary); // Read the inode corresponding to inode_id
+
+    int next_block = (temporary.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE;
+
+    if (next_block >= DIRECT_BLOCK) // If the next block exceeds the direct block limit
     {
         if (next_block == DIRECT_BLOCK)
         {
             alloc_res = dblock_alloc();
             if (alloc_res < 0)
-                return -1;
-            temp.blocks[DIRECT_BLOCK] = alloc_res;
+                return -1; // If data block allocation fails, return failure
+
+            temporary.blocks[DIRECT_BLOCK] = alloc_res;
         }
-        dblock_read(temp.blocks[DIRECT_BLOCK], block_copy);
+        dblock_read(temporary.blocks[DIRECT_BLOCK], block_copy);
         uint16_t *block_list = (uint16_t *)block_copy;
 
-        alloc_res = dblock_alloc();
+        alloc_res = dblock_alloc(); // Allocate a data block
         if (alloc_res < 0)
         {
             if (next_block == DIRECT_BLOCK)
-                dblock_free(temp.blocks[DIRECT_BLOCK]);
+                dblock_free(temporary.blocks[DIRECT_BLOCK]); // Free
             return -1;
         }
-        block_list[next_block - DIRECT_BLOCK] = alloc_res;
-        dblock_write(temp.blocks[DIRECT_BLOCK], block_copy);
+
+        block_list[next_block - DIRECT_BLOCK] = alloc_res; // Mount the data block to the inode
+        dblock_write(temporary.blocks[DIRECT_BLOCK], block_copy);
     }
     else
     {
-        alloc_res = dblock_alloc();
+        alloc_res = dblock_alloc(); // Allocate a data block
         if (alloc_res < 0)
-            return -1;
-        temp.blocks[next_block] = alloc_res;
+            return -1; // If data block allocation fails, return failure
+        temporary.blocks[next_block] = alloc_res;
     }
 
-    inode_write(inode_id, &temp);
+    inode_write(inode_id, &temporary); // Write the updated inode to the disk
     return alloc_res;
 }
 
 // ==================== DIRECTORY ENTRY ADD ====================
 
-static int dir_entry_add(int dir_index, int son_index, char *filename)
+static int add_2_directory_entry(int dir_index, int son_index, char *filename)
 {
     inode dir_inode;
     inode_read(dir_index, &dir_inode);
@@ -332,8 +333,8 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     int next_i;
     next_i = dir_inode.size / (sizeof(dir_entry));
 
-    int next_i_inblock;
-    next_i_inblock = next_i / DIR_ENTRY_PER_BLOCK;
+    int l_index_block;
+    l_index_block = next_i / DIR_ENTRY_PER_BLOCK;
 
     dir_entry new_entry;
     new_entry.inode_id = son_index;
@@ -342,12 +343,8 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
 
     if (next_i % DIR_ENTRY_PER_BLOCK == 0)
     {
-        int alloc_res = alloc_dblock_mount_to_inode(dir_index);
-        if (alloc_res < 0)
-        {
-            ERROR_MSG(("can't alloc dblock when insert dir_entry into dir\n"))
-            return -1;
-        }
+        int alloc_res = alloc_mount_db(dir_index);
+
         // update inode
         inode_read(dir_index, &dir_inode);
 
@@ -358,23 +355,23 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     }
     else
     {
-        if (next_i_inblock >= DIRECT_BLOCK)
+        if (l_index_block >= DIRECT_BLOCK)
         {
             dblock_read(dir_inode.blocks[DIRECT_BLOCK], block_copy);
             uint16_t *block_list = (uint16_t *)block_copy;
-            next_i_inblock = block_list[next_i_inblock - DIRECT_BLOCK]; // get real block no
+            l_index_block = block_list[l_index_block - DIRECT_BLOCK]; // get real block no
         }
         else
         {
-            next_i_inblock = dir_inode.blocks[next_i_inblock];
+            l_index_block = dir_inode.blocks[l_index_block];
         }
 
-        dblock_read(next_i_inblock, block_copy);
+        dblock_read(l_index_block, block_copy);
 
         dir_entry *entry_list = (dir_entry *)block_copy;
         entry_list[next_i % DIR_ENTRY_PER_BLOCK] = new_entry;
 
-        dblock_write(next_i_inblock, block_copy);
+        dblock_write(l_index_block, block_copy);
     }
 
     dir_inode.size += sizeof(dir_entry);
@@ -474,57 +471,53 @@ static int fd_find_same_num(int inode_id)
 
 // ==================== PATH RESOLVE ====================
 
-static int rel_path_dir_resolve(char *file_path, int temp_pwd) // this just resolve relative path and find inode
+static int path_index_resolve(char *file_path, int temp_pwd)
 {
     int path_len = strlen(file_path);
+
     if (path_len <= 0)
     {
         return temp_pwd;
     }
     int i;
+
     for (i = 0; i < path_len; i++)
         if (file_path[i] == '/')
         {
             file_path[i] = '\0';
             break;
         }
+
     int res = dir_entry_find(temp_pwd, file_path);
+
     if (res < 0)
     {
         return -1;
     }
+
     if (i == path_len)
         return res;
     inode temp;
     inode_read(res, &temp);
     if (temp.type != POS_DIRECTORY)
     {
-        ERROR_MSG(("%s is a data file not a path!\n", file_path))
+        ERROR_MSG(("%s not a path.\n", file_path))
         return -1;
     }
-    return rel_path_dir_resolve(file_path + i + 1, res);
+    return path_index_resolve(file_path + i + 1, res);
 }
 
 static int path_resolve(char *file_path, int temp_pwd, int mode)
 {
-    if (file_path == NULL)
-    {
-        ERROR_MSG(("No path input!\n"))
-        return -1;
-    }
     int path_len = strlen(file_path);
     if (path_len > MAX_PATH_NAME)
     {
-        ERROR_MSG(("too long path!\n"))
-        return -1;
-    }
-    if (path_len == 0)
-    {
-        ERROR_MSG(("no path input!\n"))
+        ERROR_MSG(("Path size long.\n"))
         return -1;
     }
 
     char path_buffer[MAX_PATH_NAME + 1];
+
     bcopy((unsigned char *)file_path, (unsigned char *)path_buffer, path_len);
     path_buffer[path_len] = '\0';
     file_path = path_buffer;
@@ -557,12 +550,12 @@ static int path_resolve(char *file_path, int temp_pwd, int mode)
     {
         if (path_len == 0 || file_path[path_len - 1] == '/')
         {
-            ERROR_MSG(("try to find a file but input a path!\n"))
+            ERROR_MSG(("Error.\n"))
             return -1;
         }
     }
     else if (file_path[path_len - 1] == '/')
         file_path[path_len - 1] = '\0';
 
-    return rel_path_dir_resolve(file_path, temp_pwd);
+    return path_index_resolve(file_path, temp_pwd);
 }

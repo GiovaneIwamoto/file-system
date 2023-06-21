@@ -108,14 +108,14 @@ int fs_mkfs(void)
 
     // Adding directory entries to root "." and ".."
     int res;
-    res = dir_entry_add(PWD_ID_ROOT_DIR, PWD_ID_ROOT_DIR, ".");
+    res = add_2_directory_entry(PWD_ID_ROOT_DIR, PWD_ID_ROOT_DIR, ".");
     if (res < 0)
     {
         bzero(super_block_copy, NEW_BLOCK_SIZE);
         sb_write();
         return -1;
     }
-    res = dir_entry_add(PWD_ID_ROOT_DIR, PWD_ID_ROOT_DIR, "..");
+    res = add_2_directory_entry(PWD_ID_ROOT_DIR, PWD_ID_ROOT_DIR, "..");
     if (res < 0)
     {
         bzero(super_block_copy, NEW_BLOCK_SIZE);
@@ -373,17 +373,17 @@ int fs_mkdir(char *fileName)
         return -1;
 
     // Inode entrys for current and parent representations
-    if (dir_entry_add(created_inode, created_inode, ".") < 0)
+    if (add_2_directory_entry(created_inode, created_inode, ".") < 0)
     {
         inode_free(created_inode);
         return -1;
     }
-    if (dir_entry_add(created_inode, pwd, "..") < 0)
+    if (add_2_directory_entry(created_inode, pwd, "..") < 0)
     {
         inode_free(created_inode);
         return -1;
     }
-    if (dir_entry_add(pwd, created_inode, fileName) < 0)
+    if (add_2_directory_entry(pwd, created_inode, fileName) < 0)
     {
         inode_free(created_inode);
         return -1;
