@@ -426,6 +426,37 @@ static int dir_entry_find(int dir_index, char *filename)
     return -1;
 }
 
+//==================== FD OPERATIONS ====================
+
+static int fd_open(int inode_id, int mode)
+{
+    int i;
+    for (i = 0; i < MAX_FILE_OPEN; i++)
+        if (file_desc_table[i].is_using == FALSE)
+        {
+            file_desc_table[i].is_using = TRUE;
+            file_desc_table[i].cursor = 0;
+            file_desc_table[i].inode_id = inode_id;
+            file_desc_table[i].mode = mode;
+            return i;
+        }
+    ERROR_MSG(("Not enough file descriptor!\n"))
+    return -1;
+}
+static void fd_close(int fd)
+{
+    file_desc_table[fd].is_using = FALSE;
+}
+static int fd_find_same_num(int inode_id)
+{
+    int i;
+    int count = 0;
+    for (i = 0; i < MAX_FILE_OPEN; i++)
+        if (file_desc_table[i].is_using && file_desc_table[i].inode_id == inode_id)
+            count++;
+    return count;
+}
+
 // ==================== PATH RESOLVE ====================
 
 static int rel_path_dir_resolve(char *file_path, int temp_pwd) // this just resolve relative path and find inode
