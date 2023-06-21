@@ -41,42 +41,50 @@ static void sb_write()
 
 // ==================== BITMAP FOR INODE OR DATA ====================
 
-static void write_bitmap_block(int i_d, int index, int val) // 0 for inode bitmap,1 for data bitmap
+static void write_bitmap_block(int inode_or_dt, int index, int val) // 0 for inode bitmap,1 for data bitmap
 {
     char *bitmap_block_scratch;
-    if (i_d)
+    if (inode_or_dt)
         bitmap_block_scratch = dblock_bitmap_block_copy;
     else
         bitmap_block_scratch = inode_bitmap_block_copy;
 
-    int nbyte = index / 8;
-    uint8_t the_byte = bitmap_block_scratch[nbyte];
-    int mask_off = index % 8;
+    int byte_index = index / 8; // Byte index calc
+    uint8_t the_byte = bitmap_block_scratch[byte_index];
+
+    int mask_off = index % 8; // Bit offset within byte
     uint8_t mask = 1 << mask_off;
-    the_byte = the_byte & (~mask);
+
+    the_byte = the_byte & (~mask); // Set or clear bit
     if (val)
         the_byte = the_byte | mask;
 
-    bitmap_block_scratch[nbyte] = the_byte;
+    bitmap_block_scratch[byte_index] = the_byte; // Update
 
-    if (i_d)
+    // Write the modified bitmap block back to the corresponding location
+    if (inode_or_dt)
         adapt_block_write(created_super_block->dblock_bitmap_place, bitmap_block_scratch);
     else
         adapt_block_write(created_super_block->inode_bitmap_place, bitmap_block_scratch);
 }
 
-static int read_bitmap_block(int i_d, int index) // 0 for inode bitmap,1 for data bitmap
+static int read_bitmap_block(int inode_or_dt, int index) // 0 for inode bitmap,1 for data bitmap
 {
     char *bitmap_block_scratch;
-    if (i_d)
-        bitmap_block_scratch = dblock_bitmap_block_copy;
+
+    if (inode_or_dt)
+        bitmap_block_scratch = dblock_bitmap_block_copy; // Assign the data bitmap block copy
+
     else
-        bitmap_block_scratch = inode_bitmap_block_copy;
-    int nbyte = index / 8;
-    uint8_t the_byte = bitmap_block_scratch[nbyte];
+        bitmap_block_scratch = inode_bitmap_block_copy; // Assign the inode bitmap block copy
+
+    int byte_index = index / 8; // Byte index
+    uint8_t the_byte = bitmap_block_scratch[byte_index];
+
     int mask_off = index % 8;
     uint8_t mask = 1 << mask_off;
-    return (mask & the_byte) ? 1 : 0;
+
+    return (mask & the_byte) ? 1 : 0; // Ckeck targ bit is set in byte
 }
 
 // ==================== DATA BLOCK READ WRITE FREE ====================
@@ -96,27 +104,27 @@ static void dblock_free(int index)
     int temp = read_bitmap_block(DBLOCK_BITMAP, index);
     if (temp)
     {
-        created_super_block->dblock_count--;
-        sb_write();
+        created_super_block->dblock_count--; // Decrease count
+        sb_write();                          // Write changes to disk
     }
     write_bitmap_block(DBLOCK_BITMAP, index, 0);
 }
 
-// ==================== FIND NEXT FREE ====================
+// ==================== FIND AVAILABLE ====================
 
-static int find_next_free(int i_d) // must alloc(write 1) after this function find the result
+static int find_available(int inode_or_dt)
 {
     int i;
     int res;
-    if (i_d)
-    {
+    if (inode_or_dt)
+    { // Find free data block
         i = (dblock_bitmap_last + 1) % DATA_BLOCK_NUMBER;
         while (i != dblock_bitmap_last)
         {
             res = read_bitmap_block(DBLOCK_BITMAP, i);
             if (res == 0)
             {
-                dblock_bitmap_last = i;
+                dblock_bitmap_last = i; // Update last allc
                 return i;
             }
             i++;
@@ -125,14 +133,14 @@ static int find_next_free(int i_d) // must alloc(write 1) after this function fi
         }
     }
     else
-    {
+    { // Next free inode
         i = (inode_bitmap_last + 1) % MAX_FILE_COUNT;
         while (i != inode_bitmap_last)
         {
             res = read_bitmap_block(INODE_BITMAP, i);
             if (res == 0)
             {
-                inode_bitmap_last = i;
+                inode_bitmap_last = i; // Ipdate last allc
                 return i;
             }
             i++;
@@ -146,12 +154,14 @@ static int find_next_free(int i_d) // must alloc(write 1) after this function fi
 // ==================== INODE INIT READ ALLOC WRITE FREE ====================
 
 // Initializing an inode structure
-static void inode_init(inode *p, int type) // 0 for dir , 1 for file
+static void inode_init(inode *prop, int type)
 {
-    p->size = 0;
-    p->type = type;
-    p->link_count = 1;
-    bzero((char *)p->blocks, sizeof(uint16_t) * (DIRECT_BLOCK + 1));
+    // Initializes an inode structure by setting its properties
+    prop->size = 0;
+    prop->type = type;
+    prop->link_count = 1;
+    // Clears the block pointers in the inode
+    bzero((char *)prop->blocks, sizeof(uint16_t) * (DIRECT_BLOCK + 1));
 }
 
 // Write an inode to a specific index in the inode block
@@ -160,6 +170,8 @@ static void inode_write(int index, inode *inode_buff)
     char temp_block_scratch[NEW_BLOCK_SIZE];
     adapt_block_read(created_super_block->inode_start + (index / INODE_PER_BLOCK), temp_block_scratch);
     inode *inode_block_scratch = (inode *)temp_block_scratch;
+
+    // Copy of contents of the inode buffer to the target index in the temporary inode block
     bcopy((unsigned char *)inode_buff, (unsigned char *)(inode_block_scratch + (index % INODE_PER_BLOCK)), sizeof(inode));
     adapt_block_write(created_super_block->inode_start + (index / INODE_PER_BLOCK), temp_block_scratch);
 }
@@ -170,55 +182,65 @@ static void inode_read(int index, inode *inode_buff)
     char temp_block_scratch[NEW_BLOCK_SIZE];
     adapt_block_read(created_super_block->inode_start + (index / INODE_PER_BLOCK), temp_block_scratch);
     inode *inode_block_scratch = (inode *)temp_block_scratch;
+
+    // Copy contents of the tgt index in the temporary inode block to the inode buffer
     bcopy((unsigned char *)(inode_block_scratch + (index % INODE_PER_BLOCK)), (unsigned char *)inode_buff, sizeof(inode));
 }
 
 static int inode_alloc(void)
 {
-    int search_res = -1;
-    search_res = find_next_free(INODE_BITMAP);
-    if (search_res >= 0)
+    int searched = -1;
+    searched = find_available(INODE_BITMAP); // Find the next free inode by searching the inode bitmap
+
+    if (searched >= 0) // Free inode found
     {
-        write_bitmap_block(INODE_BITMAP, search_res, 1);
-        created_super_block->inode_count++;
-        sb_write();
-        return search_res;
+        write_bitmap_block(INODE_BITMAP, searched, 1);
+        created_super_block->inode_count++; // Allocation counter added
+        sb_write();                         // Wb
+
+        return searched;
     }
     return -1;
 }
 
-static int inode_create(int type) // 0 for dir 1 for file , create and init !
+static int inode_create(int type)
 {
-    inode temp_inode;
-    int alloc_index;
-    alloc_index = inode_alloc();
-    if (alloc_index < 0)
+    inode inode_copy; // Inode structure hold new inode info
+    int i_allocated_index;
+
+    i_allocated_index = inode_alloc();
+
+    if (i_allocated_index < 0) // Fail
     {
-        ERROR_MSG(("no enough inode space for new inode!\n"))
         return -1;
     }
-    inode_init(&temp_inode, type);
-    inode_write(alloc_index, &temp_inode);
-    return alloc_index;
+    inode_init(&inode_copy, type);
+    inode_write(i_allocated_index, &inode_copy);
+
+    return i_allocated_index;
 }
 
-static void inode_free(int index) // free the inode, also free its data
+static void inode_free(int index)
 {
-    int temp = read_bitmap_block(INODE_BITMAP, index);
-    inode inode_temp;
-    if (temp)
+    int temp_stat = read_bitmap_block(INODE_BITMAP, index); // Check if the inode is marked as used in the inode bitmap
+    inode inode_temp;                                       // Inode struct
+
+    if (temp_stat) // If the inode is marked as used
     {
-        inode_read(index, &inode_temp);
-        int used_data_blocks; // total blocks used , not included indirect index block
+        inode_read(index, &inode_temp); // Read the inode from the specified index into the temporary inode structure
+        int used_data_blocks;
         used_data_blocks = (inode_temp.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE;
-        if (used_data_blocks > DIRECT_BLOCK) // use indirect block
+
+        if (used_data_blocks > DIRECT_BLOCK) // If the number of used data blocks exceeds the number of direct blocks
         {
-            // use scratch here
             dblock_read(inode_temp.blocks[DIRECT_BLOCK], block_copy);
             int i;
+
             for (i = 0; i <= DIRECT_BLOCK; i++)
-                dblock_free(inode_temp.blocks[i]);
+                dblock_free(inode_temp.blocks[i]); // Free the direct blocks
+
             uint16_t *block_list = (uint16_t *)block_copy;
+
             for (i = 0; i < used_data_blocks - DIRECT_BLOCK; i++)
                 dblock_free(block_list[i]);
         }
@@ -226,11 +248,11 @@ static void inode_free(int index) // free the inode, also free its data
         {
             int i;
             for (i = 0; i < used_data_blocks; i++)
-                dblock_free(inode_temp.blocks[i]);
+                dblock_free(inode_temp.blocks[i]); // Free all the used data blocks
         }
-        write_bitmap_block(INODE_BITMAP, index, 0);
+        write_bitmap_block(INODE_BITMAP, index, 0); // Mark the inode as free in the inode bitmap
         created_super_block->inode_count--;
-        sb_write();
+        sb_write(); // Update
     }
 }
 
@@ -239,35 +261,36 @@ static void inode_free(int index) // free the inode, also free its data
 static int dblock_alloc(void)
 {
     int search_res = -1;
-    search_res = find_next_free(DBLOCK_BITMAP);
-    if (search_res >= 0)
+    search_res = find_available(DBLOCK_BITMAP); // Find aval
+
+    if (search_res >= 0) // If a free data block is found
     {
-        write_bitmap_block(DBLOCK_BITMAP, search_res, 1);
+        write_bitmap_block(DBLOCK_BITMAP, search_res, 1); // Mark the data block as used in the data block bitmap
         created_super_block->dblock_count++;
         sb_write();
+
         bzero_block_custom(created_super_block->dblock_start + search_res);
         return search_res;
     }
-    ERROR_MSG(("alloc data block fail"))
+    ERROR_MSG(("Impossible to alloc."))
     return -1;
 }
 
 // ==================== ALLOC DATA BLOCK MOUNT TO INODE ====================
-
+// TODO:
 static int alloc_dblock_mount_to_inode(int inode_id)
 {
     int alloc_res;
     inode temp;
     inode_read(inode_id, &temp);
-    int next_block = (temp.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE; // start from 0 , mean the next in-inode blocks id
+    int next_block = (temp.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE;
     if (next_block > MAX_BLOCKS_INDEX_IN_INODE)
     {
-        ERROR_MSG(("beyond one inode can handle!\n"))
         return -1;
     }
-    if (next_block >= DIRECT_BLOCK) // need indirect block
+    if (next_block >= DIRECT_BLOCK)
     {
-        if (next_block == DIRECT_BLOCK) // need indirect block ,but the indirect index block has not been alloced
+        if (next_block == DIRECT_BLOCK)
         {
             alloc_res = dblock_alloc();
             if (alloc_res < 0)
@@ -294,7 +317,7 @@ static int alloc_dblock_mount_to_inode(int inode_id)
             return -1;
         temp.blocks[next_block] = alloc_res;
     }
-    // ERROR_MSG(("inode %d need a block in-inode id %d, alloc_res %d\n",inode_id,next_block,alloc_res))
+
     inode_write(inode_id, &temp);
     return alloc_res;
 }
@@ -303,15 +326,12 @@ static int alloc_dblock_mount_to_inode(int inode_id)
 
 static int dir_entry_add(int dir_index, int son_index, char *filename)
 {
-    // Read father inode
     inode dir_inode;
     inode_read(dir_index, &dir_inode);
 
-    // Next slot for entry
     int next_i;
     next_i = dir_inode.size / (sizeof(dir_entry));
 
-    // Block index
     int next_i_inblock;
     next_i_inblock = next_i / DIR_ENTRY_PER_BLOCK;
 
@@ -320,7 +340,7 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     bzero(new_entry.file_name, MAX_FILE_NAME);
     strcpy_limited(filename, new_entry.file_name, MAX_FILE_NAME);
 
-    if (next_i % DIR_ENTRY_PER_BLOCK == 0) // need new block
+    if (next_i % DIR_ENTRY_PER_BLOCK == 0)
     {
         int alloc_res = alloc_dblock_mount_to_inode(dir_index);
         if (alloc_res < 0)
@@ -339,14 +359,13 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     else
     {
         if (next_i_inblock >= DIRECT_BLOCK)
-        { // indirect block
+        {
             dblock_read(dir_inode.blocks[DIRECT_BLOCK], block_copy);
             uint16_t *block_list = (uint16_t *)block_copy;
             next_i_inblock = block_list[next_i_inblock - DIRECT_BLOCK]; // get real block no
         }
         else
         {
-            // real block no is dir_inode.blocks[next_i_inblock]
             next_i_inblock = dir_inode.blocks[next_i_inblock];
         }
 
@@ -359,7 +378,7 @@ static int dir_entry_add(int dir_index, int son_index, char *filename)
     }
 
     dir_inode.size += sizeof(dir_entry);
-    inode_write(dir_index, &dir_inode); // update dir inode
+    inode_write(dir_index, &dir_inode);
     return 0;
 }
 
@@ -387,7 +406,6 @@ static int dir_entry_find(int dir_index, char *filename)
                 if (same_string(entry_list[j].file_name, filename))
                     return entry_list[j].inode_id;
         }
-        // last block
         dblock_read(block_list[total_block_num - DIRECT_BLOCK - 1], block_copy_copy);
         int final_end = (total_entry_num - 1) % DIR_ENTRY_PER_BLOCK;
         dir_entry *entry_list = (dir_entry *)block_copy_copy;
@@ -397,11 +415,9 @@ static int dir_entry_find(int dir_index, char *filename)
                 return entry_list[j].inode_id;
         }
 
-        // trick to find in direct blocks
         total_block_num = DIRECT_BLOCK;
         total_entry_num = DIRECT_BLOCK * DIR_ENTRY_PER_BLOCK;
     }
-    // direct blocks
     int i, j, entry_block;
     for (i = 0; i < total_block_num - 1; i++)
     {
@@ -412,7 +428,6 @@ static int dir_entry_find(int dir_index, char *filename)
             if (same_string(entry_list[j].file_name, filename))
                 return entry_list[j].inode_id;
     }
-    // last block
     int final_end = (total_entry_num - 1) % DIR_ENTRY_PER_BLOCK;
     entry_block = dir_inode.blocks[total_block_num - 1];
     dblock_read(entry_block, block_copy);
@@ -476,10 +491,9 @@ static int rel_path_dir_resolve(char *file_path, int temp_pwd) // this just reso
     int res = dir_entry_find(temp_pwd, file_path);
     if (res < 0)
     {
-        // ERROR_MSG(("%s doesn't exist!\n",file_path))
         return -1;
     }
-    if (i == path_len) // we reach the last item
+    if (i == path_len)
         return res;
     inode temp;
     inode_read(res, &temp);
@@ -510,30 +524,27 @@ static int path_resolve(char *file_path, int temp_pwd, int mode)
         return -1;
     }
 
-    // copy the path
     char path_buffer[MAX_PATH_NAME + 1];
     bcopy((unsigned char *)file_path, (unsigned char *)path_buffer, path_len);
     path_buffer[path_len] = '\0';
     file_path = path_buffer;
 
-    if (file_path[0] == '/') // absolute path
+    if (file_path[0] == '/')
     {
-        // trick to change str and temp_pwd
         temp_pwd = PWD_ID_ROOT_DIR;
         file_path++;
         path_len--;
     }
 
-    if (mode == 2) // to find the last dir
+    if (mode == 2)
     {
         int i;
-        for (i = path_len - 1; i >= 0; i--) // cut the last term
+        for (i = path_len - 1; i >= 0; i--)
             if (file_path[i] == '/')
             {
                 file_path[i + 1] = '\0';
                 break;
             }
-        // find dir
         if (i == -1)
             return temp_pwd;
         else if (i == 0)
@@ -542,18 +553,16 @@ static int path_resolve(char *file_path, int temp_pwd, int mode)
             return path_resolve(file_path, temp_pwd, POS_DIRECTORY);
     }
 
-    // real file or last dir mode need to check last char
     if (mode != POS_DIRECTORY)
     {
-        if (path_len == 0 || file_path[path_len - 1] == '/') // root or end up with /
+        if (path_len == 0 || file_path[path_len - 1] == '/')
         {
             ERROR_MSG(("try to find a file but input a path!\n"))
             return -1;
         }
     }
-    else if (file_path[path_len - 1] == '/') // dir allow input: cd abc/ or cd abc
+    else if (file_path[path_len - 1] == '/')
         file_path[path_len - 1] = '\0';
 
-    // now we have a prepared relative path
     return rel_path_dir_resolve(file_path, temp_pwd);
 }
