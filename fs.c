@@ -268,10 +268,22 @@ int fs_read(int fd, char *buf, int count)
 }
 
 // TODO:
+// TODO:
+// TODO:
+// TODO:
+// TODO:
+// TODO:
+// TODO:
+// TODO:
 // ==================== WRITE ====================
 
+// writes count bytes to the file referenced by the file descriptor fd of buffer indicated by buf
 int fs_write(int fd, char *buf, int count)
 {
+    if (count == 0) // Return 0 without any effect
+        return 0;
+
+    // Error cases:
     if (count < 0)
     {
         ERROR_MSG(("Wrong count input!\n"))
@@ -282,80 +294,64 @@ int fs_write(int fd, char *buf, int count)
         ERROR_MSG(("Wrong fd input!\n"))
         return -1;
     }
-    if (file_desc_table[fd].is_using == FALSE)
-    {
-        ERROR_MSG(("fd %d is not using!", fd))
-        return -1;
-    }
-    if (file_desc_table[fd].mode == FS_O_RDONLY)
-    {
-        ERROR_MSG(("can't write the file open as read-only file"))
-        return -1;
-    }
-    if (count == 0)
-    {
-        return 0;
-    }
-    inode temp_file;
-    inode_read(file_desc_table[fd].inode_id, &temp_file);
-    int temp_size = temp_file.size;
 
-    int total_block_num = (temp_file.size - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE;
+    inode temporary_file_base; // Represent metadata file
+    inode_read(file_desc_table[fd].inode_id, &temporary_file_base);
+    int temp_size = temporary_file_base.size;
+
+    // Block storage space
     int end_block_num = (file_desc_table[fd].cursor + count - 1 + NEW_BLOCK_SIZE) / NEW_BLOCK_SIZE;
     int in_end_block_cursor = (file_desc_table[fd].cursor + count - 1) % NEW_BLOCK_SIZE;
-    while (total_block_num < end_block_num)
-    {
-        if (alloc_dblock_mount_to_inode(file_desc_table[fd].inode_id) < 0)
-        {
-            end_block_num = total_block_num;
-            in_end_block_cursor = NEW_BLOCK_SIZE - 1;
-            break;
-        }
-        inode_read(file_desc_table[fd].inode_id, &temp_file);
-        temp_file.size += NEW_BLOCK_SIZE;
-        inode_write(file_desc_table[fd].inode_id, &temp_file);
-        total_block_num++;
-    }
 
     count = (end_block_num - 1) * NEW_BLOCK_SIZE + in_end_block_cursor - file_desc_table[fd].cursor + 1;
 
     if (file_desc_table[fd].cursor + count > temp_size)
-        temp_file.size = file_desc_table[fd].cursor + count;
+        temporary_file_base.size = file_desc_table[fd].cursor + count;
     else
-        temp_file.size = temp_size;
+        temporary_file_base.size = temp_size;
 
-    inode_write(file_desc_table[fd].inode_id, &temp_file);
+    inode_write(file_desc_table[fd].inode_id, &temporary_file_base); // Write back metadata
 
-    int real_count = 0;
-    while (real_count < count)
+    // Byte writting
+    int byte_counter = 0;
+    while (byte_counter < count)
     {
         int now_block = file_desc_table[fd].cursor / NEW_BLOCK_SIZE;
         int now_block_id;
+
         if (now_block >= DIRECT_BLOCK)
         {
-            dblock_read(temp_file.blocks[DIRECT_BLOCK], block_copy);
+            dblock_read(temporary_file_base.blocks[DIRECT_BLOCK], block_copy);
             uint16_t *block_list = (uint16_t *)block_copy;
             now_block_id = block_list[now_block - DIRECT_BLOCK];
         }
+
         else
         {
-            now_block_id = temp_file.blocks[now_block];
+            now_block_id = temporary_file_base.blocks[now_block];
         }
         dblock_read(now_block_id, block_copy);
 
-        int rdy_count;
+        int to_be_written;
+
         if (now_block < end_block_num - 1)
-            rdy_count = NEW_BLOCK_SIZE - file_desc_table[fd].cursor % NEW_BLOCK_SIZE;
+            to_be_written = NEW_BLOCK_SIZE - file_desc_table[fd].cursor % NEW_BLOCK_SIZE;
+
         else
-            rdy_count = in_end_block_cursor - file_desc_table[fd].cursor % NEW_BLOCK_SIZE + 1;
-        bcopy((unsigned char *)buf, (unsigned char *)(block_copy + file_desc_table[fd].cursor % NEW_BLOCK_SIZE), rdy_count);
+            to_be_written = in_end_block_cursor - file_desc_table[fd].cursor % NEW_BLOCK_SIZE + 1;
+
+        bcopy((unsigned char *)buf, (unsigned char *)(block_copy + file_desc_table[fd].cursor % NEW_BLOCK_SIZE), to_be_written);
         dblock_write(now_block_id, block_copy);
-        buf += rdy_count;
-        real_count += rdy_count;
-        file_desc_table[fd].cursor += rdy_count;
+
+        buf = buf + to_be_written;
+
+        byte_counter = byte_counter + to_be_written;
+        file_desc_table[fd].cursor += to_be_written;
     }
-    return real_count;
+    return byte_counter;
 }
+
+// ==================== SEEK ====================
 
 int fs_lseek(int fd, int offset)
 {
@@ -366,55 +362,67 @@ int fs_lseek(int fd, int offset)
 
 int fs_mkdir(char *fileName)
 {
-    if (strlen(fileName) > MAX_FILE_NAME)
+    // Same file name case
+    if (dir_entry_find(pwd, fileName) >= 0)
     {
-        ERROR_MSG(("Too long file name!\n"))
+        ERROR_MSG(("Name already in use.\n"))
         return -1;
     }
 
-    int new_inode = inode_create(MY_DIRECTORY);
-    if (new_inode < 0)
-        return -1;
-    if (dir_entry_add(new_inode, new_inode, ".") < 0)
+    if (strlen(fileName) > MAX_FILE_NAME) // File name limiter
     {
-        inode_free(new_inode);
+        ERROR_MSG(("File name size beyond limit.\n"))
         return -1;
     }
-    if (dir_entry_add(new_inode, pwd, "..") < 0)
+
+    // New inode for current directory
+    int created_inode = inode_create(MY_DIRECTORY);
+    if (created_inode < 0)
+        return -1;
+
+    // Inode entrys for current and parent representations
+    if (dir_entry_add(created_inode, created_inode, ".") < 0)
     {
-        inode_free(new_inode);
+        inode_free(created_inode);
         return -1;
     }
-    if (dir_entry_add(pwd, new_inode, fileName) < 0)
+    if (dir_entry_add(created_inode, pwd, "..") < 0)
     {
-        inode_free(new_inode);
+        inode_free(created_inode);
         return -1;
     }
-    return new_inode;
+    if (dir_entry_add(pwd, created_inode, fileName) < 0)
+    {
+        inode_free(created_inode);
+        return -1;
+    }
+    return created_inode;
 }
 
-// ==================== INIT ====================
+// ==================== RMDIR ====================
 
 int fs_rmdir(char *fileName)
 {
     return -1;
 }
-
 // ==================== CD ====================
 
 int fs_cd(char *dirName)
 {
-    int resolved_path = path_resolve(dirName, pwd, MY_DIRECTORY);
-    if (resolved_path < 0)
+    // Verify dir path based on pwd
+    int determined_path = path_resolve(dirName, pwd, MY_DIRECTORY);
+    if (determined_path < 0)
         return -1;
-    inode temp_inode;
-    inode_read(resolved_path, &temp_inode);
-    if (temp_inode.type != MY_DIRECTORY)
+
+    inode l_inode;
+    inode_read(determined_path, &l_inode);
+
+    if (l_inode.type != MY_DIRECTORY) // Not dir case
     {
         ERROR_MSG(("%s is not a dir\n", dirName));
         return -1;
     }
-    pwd = resolved_path;
+    pwd = determined_path; // Update pwd
     return 0;
 }
 
