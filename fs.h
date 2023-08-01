@@ -55,7 +55,6 @@ int fs_ls();
 // Number of blocks available for storing data in the file system -> 235
 #define DATA_BLOCK_NUMBER (FS_SIZE / 8 - 5 - INODE_BLOCK_NUMBER)
 
-// TODO: Checkout this padding
 //  Padding size required in the super block structure
 #define SB_PADDING (NEW_BLOCK_SIZE - 18)
 

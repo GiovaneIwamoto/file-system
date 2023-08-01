@@ -418,7 +418,7 @@ int fs_cd(char *dirName)
     return 0;
 }
 
-// ==================== TODO: ====================
+// ==================== NOT IMPLEMENTED ====================
 
 int fs_link(char *old_fileName, char *new_fileName)
 {
