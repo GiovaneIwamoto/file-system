@@ -10,7 +10,7 @@ This project was developed based on a predefined code structure provided as a st
 
 The provided code structure helped set the project's direction and provided essential functions for handling disk access and reading/writing data blocks. However, to create a functional and complete file system, modifications were necessary, including adding helper functions, improving code organization, and implementing additional features.
 
-#### **AUTHOR**
+### **AUTHOR**
 
 - Giovane Hashinokuti Iwamoto - Computer Science student at UFMS - Brazil - MS
 
